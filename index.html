@@ -16,7 +16,7 @@
         
         /* La capa de UI flotará sobre la escena VR */
         #ui-overlay {
-            z-index: 10;
+            z-index: 20; /* Aseguramos que esté por encima de todo */
             pointer-events: auto; /* Permite la interacción con los elementos del overlay */
             background-color: rgba(0, 0, 0, 0.7);
             max-height: 100vh;
@@ -32,25 +32,32 @@
         
         /* Contenedor de Botones Flotantes */
         #floating-buttons {
-            z-index: 11;
+            z-index: 30; /* Debe estar por encima de UI y Visor */
             bottom: 1rem;
             left: 1rem;
-            position: fixed; /* Usar fixed en lugar de absolute para mantener la posición */
+            position: fixed;
             display: flex;
             flex-direction: column;
-            gap: 12px; /* Espacio entre botones */
+            gap: 12px;
         }
-
-        /* Estilos para las modales del visor de URL */
-        #content-modal, #url-input-modal {
+        
+        /* Contenedor del Visor Externo (Ocupa toda la pantalla, por encima de A-Frame) */
+        #external-viewer-container {
+            z-index: 10;
+            background-color: #000;
+        }
+        
+        /* Estilos para la Modal de entrada de URL */
+        #url-input-modal {
             background-color: rgba(0, 0, 0, 0.7);
+            z-index: 40;
         }
         
         /* Asegurar que el iframe ocupe todo el espacio disponible */
         #immersive-viewer {
             width: 100%;
             height: 100%;
-            border-radius: 0.5rem; /* rounded-lg */
+            border: none;
         }
     </style>
 </head>
@@ -103,7 +110,8 @@
         
         <!-- Botón 1: Alternar la visibilidad de la interfaz (Ojo) -->
         <button id="toggle-button" onclick="toggleUI()"
-                class="bg-gray-800 hover:bg-gray-700 text-white p-3 rounded-full shadow-lg transition duration-200">
+                class="bg-gray-800 hover:bg-gray-700 text-white p-3 rounded-full shadow-lg transition duration-200"
+                title="Mostrar/Ocultar Panel de Control">
             <!-- Icono de ojo abierto (predeterminado) -->
             <svg id="eye-open" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
@@ -116,7 +124,7 @@
             </svg>
         </button>
 
-        <!-- Botón 2: Abrir la Modal de URL (Flotante) - NUEVO -->
+        <!-- Botón 2: Abrir la Modal de URL (Flotante) - CARGAR URL -->
         <button id="open-url-modal-btn" 
                 class="flex items-center justify-center w-12 h-12 bg-blue-600 text-white rounded-full shadow-xl hover:bg-blue-700 transition duration-300 transform hover:scale-105" 
                 title="Cargar Contenido Inmersivo (360/3D)">
@@ -124,6 +132,25 @@
                 <path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM12.75 9a.75.75 0 0 0-1.5 0v2.25H9a.75.75 0 0 0 0 1.5h2.25V15a.75.75 0 0 0 1.5 0v-2.25H15a.75.75 0 0 0 0-1.5h-2.25V9Z" clip-rule="evenodd" />
             </svg>
         </button>
+        
+        <!-- Botón 3: Salir del Visor Externo (Visible solo cuando se carga un iframe) -->
+        <button id="exit-viewer-btn" onclick="deactivateExternalViewer()"
+                class="flex items-center justify-center w-12 h-12 bg-red-600 text-white rounded-full shadow-xl hover:bg-red-700 transition duration-300 transform hover:scale-105 hidden" 
+                title="Salir del Visor de URL y volver a VR">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+                <path fill-rule="evenodd" d="M5.47 5.47a.75.75 0 0 1 1.06 0L12 10.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L13.06 12l5.47 5.47a.75.75 0 1 1-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 0 1-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd" />
+            </svg>
+        </button>
+        
+        <!-- Botón 4: DESCARGAR ARCHIVO (Ahora descarga el contenido 360/3D) -->
+        <button id="download-btn" onclick="downloadPropertyMedia()"
+                class="flex items-center justify-center w-12 h-12 bg-purple-600 text-white rounded-full shadow-xl hover:bg-purple-700 transition duration-300 transform hover:scale-105" 
+                title="Descargar el archivo 360/3D actualmente visible">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+                <path fill-rule="evenodd" d="M12 2.25a.75.75 0 0 1 .75.75v11.69l3.18-3.18a.75.75 0 1 1 1.06 1.06l-4.5 4.5a.75.75 0 0 1-1.06 0l-4.5-4.5a.75.75 0 1 1 1.06-1.06l3.18 3.18V3a.75.75 0 0 1 .75-.75ZM3 15.75a.75.75 0 0 1 .75.75v2.25a1.5 1.5 0 0 0 1.5 1.5h13.5a1.5 1.5 0 0 0 1.5-1.5V16.5a.75.75 0 0 1 1.5 0v2.25a3 3 0 0 1-3 3H5.25a3 3 0 0 1-3-3V16.5a.75.75 0 0 1 .75-.75Z" clip-rule="evenodd" />
+            </svg>
+        </button>
+        
     </div>
     
 
@@ -132,7 +159,7 @@
     INICIO: ESCENA A-FRAME (VR)
     ======================================================================
     -->
-    <a-scene embedded vr-mode-ui="enabled: true" device-orientation-permission-ui="enabled: false">
+    <a-scene id="a-scene-main" embedded vr-mode-ui="enabled: true" device-orientation-permission-ui="enabled: false">
 
         <!-- Assets Manager: Pre-carga los assets para evitar parpadeos -->
         <a-assets>
@@ -167,7 +194,19 @@
 
     <!--
     ======================================================================
-    MODALES PARA VISOR DE URL (NUEVO)
+    VISOR DE CONTENIDO EXTERNO (FULL SCREEN)
+    ======================================================================
+    -->
+    <div id="external-viewer-container" class="absolute inset-0 hidden">
+        <iframe id="immersive-viewer" src="" allow="fullscreen; vr; accelerometer; gyroscope; magnetometer;" sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-pointer-lock" loading="lazy">
+            Tu navegador no soporta iframes.
+        </iframe>
+    </div>
+
+
+    <!--
+    ======================================================================
+    MODAL PARA INGRESO DE URL
     ======================================================================
     -->
     <!-- Modal 1: Ingreso de URL (Hidden by default) -->
@@ -180,6 +219,15 @@
                     <input type="url" id="immersive-url" required placeholder="https://ejemplo.com/visor-360"
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 transition duration-150">
                 </div>
+                <!-- Sección para la lista de URLs de prueba -->
+                <div class="mb-4 bg-gray-100 p-3 rounded-lg border border-gray-200">
+                    <h3 class="text-sm font-semibold mb-2 text-gray-600">Sugerencias de Demo:</h3>
+                    <p class="text-xs text-gray-500 mb-2">Haga clic para copiar una URL de prueba.</p>
+                    <div id="demo-links-container" class="flex flex-wrap gap-2">
+                        <!-- Los enlaces de demo se inyectarán aquí -->
+                    </div>
+                </div>
+                
                 <div class="flex justify-end space-x-3">
                     <button type="button" id="close-url-modal-btn" class="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition duration-150">
                         Cancelar
@@ -191,33 +239,6 @@
             </form>
             <!-- Contenedor para mensajes de error o información -->
             <p id="url-message" class="mt-4 text-sm text-red-500 hidden"></p>
-        </div>
-    </dialog>
-
-    <!-- Modal 2: Visor de Contenido (Hidden by default) -->
-    <dialog id="content-modal" class="fixed inset-0 w-full h-full p-4 flex items-center justify-center bg-transparent backdrop:bg-black/70" style="display: none;">
-        <div class="bg-white p-2 rounded-xl shadow-2xl w-full h-full max-w-6xl max-h-[90vh] flex flex-col">
-            <!-- Encabezado con título y botón de cierre -->
-            <div class="flex justify-between items-center p-3 border-b border-gray-200">
-                <h3 class="text-lg font-semibold text-gray-800">Visor de Contenido Inmersivo</h3>
-                <button id="close-content-modal-btn" class="p-2 text-gray-500 hover:text-gray-900 rounded-full hover:bg-gray-100 transition duration-150" title="Cerrar Visor">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
-            </div>
-            
-            <!-- Contenedor del Iframe -->
-            <div class="flex-grow p-4">
-                <iframe id="immersive-viewer" src="" allow="fullscreen; vr; accelerometer; gyroscope; magnetometer;" sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-pointer-lock" loading="lazy">
-                    Tu navegador no soporta iframes.
-                </iframe>
-            </div>
-
-            <!-- Información sobre la URL cargada -->
-            <div class="p-3 border-t border-gray-200 text-sm text-gray-600 truncate">
-                URL cargada: <span id="loaded-url-display" class="font-mono text-gray-800"></span>
-            </div>
         </div>
     </dialog>
 
@@ -241,6 +262,13 @@
         let auth;
         let userId = 'loading'; // Estado inicial
         let isAuthReady = false;
+        let isExternalViewerActive = false; // Estado para rastrear el visor externo
+        
+        // Almacena el estado de la propiedad cargada
+        let currentPropertyMediaUrl = null; 
+        let currentPropertyMediaType = null;
+        let currentPropertyCode = null;
+
 
         // Elementos del DOM para la UI del Panel/A-Frame
         const authStatus = document.getElementById('auth-status');
@@ -255,18 +283,19 @@
         const uiOverlay = document.getElementById('ui-overlay');
         const eyeOpenIcon = document.getElementById('eye-open');
         const eyeClosedIcon = document.getElementById('eye-closed');
+        const aSceneMain = document.getElementById('a-scene-main'); // Referencia a la escena A-Frame
         
-        // Elementos del DOM para el Visor de URL (NUEVO)
+        // Elementos del DOM para el Visor de URL 
         const openUrlModalBtn = document.getElementById('open-url-modal-btn');
         const closeUrlModalBtn = document.getElementById('close-url-modal-btn');
         const urlInputModal = document.getElementById('url-input-modal');
         const urlForm = document.getElementById('url-form');
         const urlInput = document.getElementById('immersive-url');
         const urlMessage = document.getElementById('url-message');
-        const contentModal = document.getElementById('content-modal');
-        const closeContentModalBtn = document.getElementById('close-content-modal-btn');
+        const externalViewerContainer = document.getElementById('external-viewer-container');
         const immersiveViewer = document.getElementById('immersive-viewer');
-        const loadedUrlDisplay = document.getElementById('loaded-url-display');
+        const exitViewerBtn = document.getElementById('exit-viewer-btn');
+        const demoLinksContainer = document.getElementById('demo-links-container');
 
 
         // Rutas de las colecciones
@@ -286,17 +315,17 @@
                     {
                         id: "info-hspot-1",
                         position: "3 1.5 -5", // Posición en el espacio 3D (x y z)
-                        infoText: "Sofa de diseño italiano.\n100% piel genuina."
+                        infoText: "Sofa de diseño italiano.\\n100% piel genuina."
                     },
                     {
                         id: "info-hspot-2",
                         position: "-5 1 0",
-                        infoText: "Ventanal de piso a techo.\nFiltro UV/IR incorporado."
+                        infoText: "Ventanal de piso a techo.\\nFiltro UV/IR incorporado."
                     },
                     {
                         id: "info-hspot-3",
                         position: "0 2.5 4",
-                        infoText: "Lámpara colgante exclusiva.\nMaterial: Latón pulido."
+                        infoText: "Lámpara colgante exclusiva.\\nMaterial: Latón pulido."
                     }
                 ],
                 // Hotspots de Teletransporte (Navegación)
@@ -345,6 +374,14 @@
                 mediaType: "image360",
                 mediaUrl: "https://placehold.co/4096x2048/9B59B6/FFFFFF/png?text=IMAGEN+360+DORMITORIO",
             }
+        ];
+        
+        // --- URLs de Demo para el Visor de URL ---
+        const DEMO_URLS = [
+            { label: 'Foto 360', url: 'https://cdn.pannellum.org/2.5/pannellum.htm#panorama=https%3A//cdn.pannellum.org/2.5/images/bunker.jpg' },
+            { label: 'Video 360', url: 'https://www.youtube.com/embed/Pj1x-334E7g' },
+            { label: 'Modelo 3D (GLB)', url: 'https://modelviewer.dev/shared-assets/models/Duck.glb' },
+            { label: 'Recorrido Virtual', url: 'https://my.matterport.com/show/?m=J4F4u9K5rPq' }
         ];
 
         // =====================================================================
@@ -548,6 +585,7 @@
                 window.loadProperty = loadProperty;
                 window.deleteSavedCode = deleteSavedCode;
                 window.toggleUI = toggleUI; // Exportar función de alternancia
+                window.downloadPropertyMedia = downloadPropertyMedia; // Exportar la nueva función de descarga
 
             } catch (error) {
                 console.error("Error al inicializar Firebase o autenticar:", error);
@@ -556,9 +594,14 @@
         }
 
         /**
-         * Función para alternar la visibilidad de la interfaz de control.
+         * Función para alternar la visibilidad de la interfaz de control (el panel 2D).
          */
         function toggleUI() {
+            // Solo funciona si el visor externo NO está activo
+            if (isExternalViewerActive) {
+                console.log("El visor externo está activo, ignorando toggleUI. Use el botón de Salir.");
+                return;
+            }
             const isHidden = uiOverlay.classList.toggle('hidden');
             
             // Alternar los iconos del botón
@@ -634,7 +677,7 @@
                     codesAdded++;
                 }
 
-                crudMessage.textContent = `Se agregaron ${codesAdded} códigos a tu lista.`;
+                crudMessage.textContent = `Se agregaron ${codesAdded} códigos a tu lista. Nota: Solo los códigos PR001-PR005 tienen contenido 360 de demo.`;
                 crudMessage.classList.remove('text-red-400');
                 crudMessage.classList.add('text-green-400');
                 codeInput.value = '';
@@ -748,6 +791,11 @@
         async function loadProperty(code) {
             if (!db) return; 
 
+            // Asegurarse de que el visor externo esté oculto antes de cargar la propiedad A-Frame
+            if (isExternalViewerActive) {
+                deactivateExternalViewer();
+            }
+
             code = code.trim().toUpperCase();
             if (!code) return;
 
@@ -756,20 +804,39 @@
             propertyTitle.classList.remove('text-red-400', 'text-green-400', 'text-blue-400');
             propertyTitle.classList.add('text-yellow-400');
 
+            let property;
+
             try {
                 // 1. Consulta a Firestore por el código de la propiedad en la colección pública de PROPERTIES
                 const propertiesRef = collection(db, PROPERTIES_COLLECTION_PATH);
                 const docRef = doc(propertiesRef, code);
                 const docSnap = await getDoc(docRef);
 
-                if (!docSnap.exists()) {
-                    throw new Error(`Propiedad no encontrada con el código: ${code}. Verifique en la colección pública.`);
+                if (docSnap.exists()) {
+                    property = docSnap.data();
+                } else {
+                    // CÓDIGO DE CORRECCIÓN: Si el código no se encuentra, usamos un objeto placeholder
+                    console.warn(`Código ${code} no encontrado en la colección pública. Usando placeholder.`);
+                    property = {
+                        code: code,
+                        title: `[PLACEHOLDER] Código: ${code}`,
+                        description: `El código ${code} existe en tu lista, pero no tiene datos de propiedad 360/3D asociados en la base de datos pública (Solo PR001-PR005).`,
+                        mediaType: "image360",
+                        mediaUrl: "#placeholder-img", // Usa la imagen de placeholder que ya está en assets
+                        hotspots: [],
+                        teleports: []
+                    };
                 }
 
-                const property = docSnap.data();
                 const { title, description, mediaType, mediaUrl } = property;
+                
+                // 2. ACTUALIZAR ESTADO DE LA PROPIEDAD
+                currentPropertyMediaUrl = mediaUrl;
+                currentPropertyMediaType = mediaType;
+                currentPropertyCode = code;
 
-                // 2. Limpiar escena actual
+
+                // 3. Limpiar escena actual
                 sky360.setAttribute('visible', false);
                 modelContainer.setAttribute('visible', false);
                 while (modelContainer.firstChild) {
@@ -781,11 +848,12 @@
                 }
 
 
-                // 3. Cargar el nuevo medio según el tipo
+                // 4. Cargar el nuevo medio según el tipo
                 propertyTitle.textContent = `${title} (${code})`;
                 propertyDescription.textContent = description;
-                propertyTitle.classList.remove('text-yellow-400', 'text-red-400', 'text-blue-400');
-                propertyTitle.classList.add('text-green-400');
+                // Si es placeholder, usar color azul. Si no, color verde.
+                propertyTitle.classList.remove('text-yellow-400', 'text-red-400');
+                propertyTitle.classList.add(property.mediaUrl === "#placeholder-img" ? 'text-blue-400' : 'text-green-400');
 
                 if (mediaType === 'image360' || mediaType === 'video360') {
                     // Carga para FOTO o VIDEO 360 (usa <a-sky>)
@@ -814,7 +882,7 @@
                         console.log(`Cargado video 360: ${mediaUrl}`);
                     }
                     
-                    // 4. Cargar Hotspots de Información (Info Hotspots)
+                    // 5. Cargar Hotspots de Información (Info Hotspots)
                     if (property.hotspots && property.hotspots.length > 0) {
                         property.hotspots.forEach(hspot => {
                             // Hotspot (Sphere)
@@ -834,7 +902,7 @@
                         console.log(`Cargados ${property.hotspots.length} hotspots interactivos.`);
                     }
 
-                    // 5. Cargar Hotspots de Teletransporte (Teleport Hotspots)
+                    // 6. Cargar Hotspots de Teletransporte (Teleport Hotspots)
                     if (property.teleports && property.teleports.length > 0) {
                         property.teleports.forEach(teleport => {
                             // Hotspot (Sphere para Teletransporte)
@@ -867,6 +935,7 @@
                     console.log(`Cargado modelo 3D GLTF: ${mediaUrl}`);
 
                 } else {
+                    // Esto solo ocurriría si el tipo de medio en la base de datos es inválido
                     throw new Error(`Tipo de medio desconocido: ${mediaType}`);
                 }
 
@@ -876,6 +945,11 @@
                 propertyTitle.classList.add('text-red-400');
                 propertyDescription.textContent = error.message;
                 console.error("Error al cargar la propiedad:", error);
+                
+                // Si falla, restablecer el estado de la URL de descarga
+                currentPropertyMediaUrl = null; 
+                currentPropertyMediaType = null;
+                currentPropertyCode = null;
             }
         }
 
@@ -883,16 +957,162 @@
         // =====================================================================
         // LÓGICA DEL VISOR DE URL (NUEVO)
         // =====================================================================
+        
+        /**
+         * Activa el visor externo a pantalla completa con la URL proporcionada.
+         * @param {string} url - La URL del contenido 360/3D/video.
+         */
+        function activateExternalViewer(url) {
+            isExternalViewerActive = true;
+            immersiveViewer.src = url;
+            
+            // 1. Ocultar la escena de A-Frame (para evitar conflictos de rendimiento)
+            aSceneMain.style.display = 'none';
+
+            // 2. Mostrar el contenedor del visor externo
+            externalViewerContainer.classList.remove('hidden');
+            
+            // 3. Ocultar el panel de control 2D y el botón de cargar URL
+            uiOverlay.classList.add('hidden');
+            openUrlModalBtn.classList.add('hidden');
+            
+            // 4. Mostrar el botón de SALIR
+            exitViewerBtn.classList.remove('hidden');
+            
+            // 5. Borrar el estado de la propiedad cargada para evitar descargas erróneas
+            currentPropertyMediaUrl = null;
+            currentPropertyMediaType = 'external';
+            currentPropertyCode = 'EXTERNAL';
+        }
+        
+        /**
+         * Desactiva el visor externo y vuelve a la escena de A-Frame.
+         */
+        function deactivateExternalViewer() {
+            isExternalViewerActive = false;
+            
+            // 1. Ocultar el contenedor del visor externo y limpiar el iframe
+            externalViewerContainer.classList.add('hidden');
+            immersiveViewer.src = ""; // Detener contenido
+
+            // 2. Mostrar la escena de A-Frame
+            aSceneMain.style.display = 'block'; 
+
+            // 3. Mostrar el botón de cargar URL y el panel 
+            openUrlModalBtn.classList.remove('hidden');
+            // Mantiene el panel oculto si el usuario lo había ocultado con toggleUI
+            if (!document.getElementById('eye-closed').classList.contains('hidden')) {
+                uiOverlay.classList.remove('hidden');
+            } 
+            
+            // 4. Ocultar el botón de SALIR
+            exitViewerBtn.classList.add('hidden');
+            
+            // 5. Volver a cargar la última propiedad de A-Frame
+            loadCurrentProperty();
+
+            console.log("Regresando a la escena VR de A-Frame.");
+        }
+        window.deactivateExternalViewer = deactivateExternalViewer; // Exportar para uso en el DOM
+
+        /**
+         * Función para forzar la descarga del archivo 360/3D actualmente cargado.
+         */
+        function downloadPropertyMedia() {
+            if (!currentPropertyMediaUrl || currentPropertyMediaUrl === "#placeholder-img") {
+                // Usamos un modal o un mensaje personalizado en lugar de alert()
+                showTemporaryMessage('No hay un medio inmersivo (360/3D) válido cargado para descargar.', true);
+                return;
+            }
+
+            // Crear un enlace temporal
+            const a = document.createElement('a');
+            a.href = currentPropertyMediaUrl;
+            
+            // Intentar inferir un nombre de archivo
+            let fileName = `${currentPropertyCode || 'download'}.${getFileExtension(currentPropertyMediaUrl)}`;
+
+            a.download = fileName; 
+            document.body.appendChild(a);
+            a.click();
+            
+            // Limpieza
+            document.body.removeChild(a);
+            showTemporaryMessage(`Iniciando descarga de: ${fileName}`, false);
+        }
+
+        /**
+         * Intenta obtener la extensión del archivo a partir de la URL.
+         * @param {string} url - La URL del archivo.
+         * @returns {string} La extensión (e.g., 'jpg', 'glb', o 'bin').
+         */
+        function getFileExtension(url) {
+            try {
+                // Si es un placeholder local, no tiene una URL real para descargar
+                if (url.startsWith('#')) return 'placeholder';
+                
+                const path = new URL(url).pathname;
+                const lastSegment = path.split('/').pop();
+                const parts = lastSegment.split('.');
+                
+                if (parts.length > 1) {
+                    // Retorna la última parte (la extensión)
+                    return parts.pop().split('?')[0].toLowerCase();
+                }
+
+                // Fallback basado en el tipo de medio conocido
+                if (currentPropertyMediaType === 'image360') return 'jpg';
+                if (currentPropertyMediaType === 'video360') return 'mp4';
+                if (currentPropertyMediaType === 'gltf3d') return 'glb';
+                
+                return 'bin'; // Extensión por defecto si no se puede determinar
+            } catch (e) {
+                console.error("Error al parsear URL para extensión:", e);
+                return 'bin';
+            }
+        }
+        
+        /**
+         * Muestra un mensaje temporal en el área de CRUD.
+         */
+        function showTemporaryMessage(message, isError = false) {
+             const msg = document.getElementById('crud-message');
+             msg.textContent = message;
+             msg.classList.remove('text-red-400', 'text-green-400', 'text-blue-400', 'text-yellow-400');
+             msg.classList.add(isError ? 'text-red-400' : 'text-blue-400');
+             
+             // Opcional: Ocultar después de unos segundos si no es un error persistente
+             if (!isError) {
+                 setTimeout(() => {
+                     msg.textContent = '';
+                 }, 4000);
+             }
+        }
+        window.downloadPropertyMedia = downloadPropertyMedia; // Exportar al ámbito global
+
 
         document.addEventListener('DOMContentLoaded', () => {
             
             // --- Funciones de la Modal de URL ---
 
+            // Inyectar botones de demo en la modal
+            DEMO_URLS.forEach(item => {
+                const btn = document.createElement('button');
+                btn.textContent = item.label;
+                btn.className = 'text-xs bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium px-2 py-1 rounded-full transition duration-150';
+                btn.title = item.url;
+                btn.onclick = (e) => {
+                    e.preventDefault();
+                    // Copiar la URL al input
+                    urlInput.value = item.url; 
+                };
+                demoLinksContainer.appendChild(btn);
+            });
+
             openUrlModalBtn.addEventListener('click', () => {
                 urlInputModal.style.display = 'flex'; // Mostrar la modal
                 urlInputModal.showModal(); // Usar showModal para un manejo correcto
                 urlMessage.classList.add('hidden');
-                urlInput.value = ''; // Limpiar el campo
             });
 
             closeUrlModalBtn.addEventListener('click', () => {
@@ -914,36 +1134,15 @@
                 const url = urlInput.value.trim();
                 
                 if (url) {
-                    // Cargar la URL en el iframe
-                    immersiveViewer.src = url;
-                    loadedUrlDisplay.textContent = url;
+                    // Cargar la URL en el visor externo a pantalla completa
+                    activateExternalViewer(url); 
                     
                     // Cerrar la modal de URL
                     urlInputModal.close();
                     urlInputModal.style.display = 'none';
 
-                    // Abrir la modal del visor
-                    contentModal.style.display = 'flex';
-                    contentModal.showModal();
-
                 } else {
                     showUrlMessage('Por favor, ingresa una URL válida.', true);
-                }
-            });
-
-            // --- Funciones de la Modal de Contenido ---
-
-            closeContentModalBtn.addEventListener('click', () => {
-                contentModal.close();
-                contentModal.style.display = 'none';
-                // Limpiar el iframe al cerrar para detener la reproducción
-                immersiveViewer.src = ""; 
-            });
-            
-            // Permitir cerrar la modal de contenido al hacer clic fuera de ella (backdrop)
-            contentModal.addEventListener('click', (event) => {
-                if (event.target === contentModal) {
-                    closeContentModalBtn.click();
                 }
             });
 
