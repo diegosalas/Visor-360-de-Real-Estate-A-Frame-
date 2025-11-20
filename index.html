@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visor 360 de Real Estate (A-Frame)</title>
+    <!-- Incluye el SDK de A-Frame (basado en Three.js) -->
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <!-- Incluye Tailwind CSS para la interfaz de usuario 2D -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilos básicos para asegurar que el canvas ocupe toda la pantalla y el cuerpo sin márgenes */
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; }
+        /* Aseguramos que la escena A-Frame siempre tome el 100% */
+        a-scene { height: 100vh; width: 100vw; }
+        /* La capa de UI flotará sobre la escena VR */
+        #ui-overlay {
+            z-index: 10;
+            pointer-events: auto; /* Permite la interacción con los elementos del overlay */
+            background-color: rgba(0, 0, 0, 0.7);
+            max-height: 100vh;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+
+    <!--
+    ======================================================================
+    INICIO: INTERFAZ DE USUARIO 2D (Código de Propiedad y CRUD)
+    ======================================================================
+    -->
+    <div id="ui-overlay" class="absolute top-0 left-0 w-full md:w-auto md:max-w-md mx-auto md:m-4 p-4 rounded-lg shadow-2xl flex flex-col gap-4 text-white">
+        <h1 class="text-2xl font-extrabold text-center text-blue-300">Inmobiliaria VR - Control</h1>
+        <p id="auth-status" class="text-xs text-yellow-300 text-center"></p>
+
+        <!-- Sección de Carga de Propiedad -->
+        <div class="border-b border-gray-600 pb-3">
+            <h2 class="text-lg font-semibold mb-2">1. Visualizar Propiedad Actual</h2>
+            <div class="flex flex-col gap-2">
+                <p id="property-title" class="text-xl font-bold text-green-400">Sin Propiedad Cargada</p>
+                <p id="property-description" class="text-sm text-gray-300">Utilice la lista o ingrese un código para cargar una propiedad.</p>
+            </div>
+        </div>
+
+        <!-- Sección de CRUD: Agregar Códigos -->
+        <div class="border-b border-gray-600 pb-3">
+            <h2 class="text-lg font-semibold mb-2">2. Añadir/Guardar Códigos</h2>
+            <div class="flex flex-col sm:flex-row gap-2">
+                <input type="text" id="code-input" placeholder="Ej: PR001, PR002, PR003"
+                       class="flex-grow p-2 rounded-lg border border-gray-600 bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button id="add-code-button" onclick="addCodes()"
+                        class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition duration-200 shadow-md flex-shrink-0">
+                    Guardar Códigos
+                </button>
+            </div>
+            <p id="crud-message" class="text-xs mt-1 text-gray-400 italic">Separe múltiples códigos con comas (Ej: A1, B2, C3).</p>
+        </div>
+
+        <!-- Sección de CRUD: Lista de Códigos Guardados -->
+        <div>
+            <h2 class="text-lg font-semibold mb-2">3. Mis Códigos Guardados</h2>
+            <ul id="saved-codes-list" class="space-y-2">
+                <!-- Los códigos se insertarán aquí dinámicamente -->
+                <li class="text-center text-gray-400">Cargando lista...</li>
+            </ul>
+        </div>
+    </div>
+
+    <!--
+    ======================================================================
+    INICIO: ESCENA A-FRAME (VR)
+    ======================================================================
+    -->
+    <a-scene embedded vr-mode-ui="enabled: true" device-orientation-permission-ui="enabled: false">
+
+        <!-- Assets Manager: Pre-carga los assets para evitar parpadeos -->
+        <a-assets>
+            <img id="placeholder-img" src="https://placehold.co/4096x2048/34495E/FFFFFF/png?text=VR+LISTO+%7C+CARGUE+UNA+PROPIEDAD" alt="Imagen de bienvenida" crossorigin="anonymous">
+            <video id="property-video" src="" crossorigin="anonymous"></video>
+        </a-assets>
+
+        <!-- 1. Entorno 360 (Sky) - Inicialmente con el placeholder -->
+        <a-sky id="sky360" src="#placeholder-img" rotation="0 -70 0"></a-sky>
+
+        <!-- 2. Contenedor para Modelo 3D (GLTF) -->
+        <a-entity id="model-container" visible="false">
+            <!-- El modelo 3D se añadirá aquí -->
+        </a-entity>
+
+        <!-- 3. Cámara y Cursor -->
+        <a-entity camera look-controls position="0 1.6 0">
+            <!-- Cursor: Permite la interacción en VR (mirar para seleccionar) -->
+            <a-entity cursor="fuse: true; fuseTimeout: 1000"
+                      position="0 0 -1"
+                      geometry="primitive: ring; radiusInner: 0.01; radiusOuter: 0.02"
+                      material="color: #4CAF50; shader: flat"
+                      animation__fusing="property: scale; from: 1 1 1; to: 0.2 0.2 0.2; startEvents: fusing; dur: 1000"
+                      animation__fused="property: scale; to: 1 1 1; startEvents: click, fuse-timeout; dur: 150">
+            </a-entity>
+        </a-entity>
+
+    </a-scene>
+
+    <!--
+    ======================================================================
+    INICIO: LÓGICA JAVASCRIPT Y FIREBASE
+    ======================================================================
+    -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, where, getDocs, setDoc, doc, updateDoc, deleteDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Variables globales proporcionadas por el entorno
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db;
+        let auth;
+        let userId = 'loading'; // Estado inicial
+        let isAuthReady = false;
+
+        // Elementos del DOM para la UI
+        const authStatus = document.getElementById('auth-status');
+        const codeInput = document.getElementById('code-input');
+        const propertyTitle = document.getElementById('property-title');
+        const propertyDescription = document.getElementById('property-description');
+        const sky360 = document.getElementById('sky360');
+        const modelContainer = document.getElementById('model-container');
+        const savedCodesList = document.getElementById('saved-codes-list');
+        const crudMessage = document.getElementById('crud-message');
+
+        // Rutas de las colecciones
+        const PROPERTIES_COLLECTION_PATH = `/artifacts/${appId}/public/data/properties`;
+        let USER_SAVED_PROPERTIES_PATH = ''; // Se define tras la autenticación
+
+        // --- MOCKS DE PROPIEDADES (Datos públicos que la app lee) ---
+        const MOCK_PROPERTIES = [
+            {
+                code: "PR001",
+                title: "Foto 360 - Sala Principal",
+                description: "Una vista panorámica de un lujoso apartamento moderno (PR001).",
+                mediaType: "image360",
+                mediaUrl: "https://placehold.co/4096x2048/FF5733/FFFFFF/png?text=IMAGEN+360+SALA"
+            },
+            {
+                code: "PR002",
+                title: "Video 360 - Recorrido Exterior",
+                description: "Tour en video 360 por el jardín y piscina (PR002).",
+                mediaType: "video360",
+                mediaUrl: "https://commondatabase.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4"
+            },
+            {
+                code: "PR003",
+                title: "Plano 3D - Casa Mod. B",
+                description: "Modelo 3D GLTF del plano arquitectónico (PR003).",
+                mediaType: "gltf3d",
+                mediaUrl: "https://cdn.glitch.com/2b39504a-4e2b-42be-8998-386d38e6e58f%2FDuck.glb?v=1560613291079"
+            }
+        ];
+
+        /**
+         * Inicializa Firebase, autentica al usuario y establece el listener de autenticación.
+         */
+        async function initializeFirebase() {
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                authStatus.textContent = 'Autenticando...';
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        isAuthReady = true;
+                        authStatus.textContent = `Usuario: ${userId.substring(0, 8)}... (VR)`;
+                        
+                        USER_SAVED_PROPERTIES_PATH = `/artifacts/${appId}/users/${userId}/userSavedProperties`;
+
+                        // 1. Asegurar la existencia de los datos de prueba públicos
+                        initializeMockProperties();
+
+                        // 2. Iniciar la escucha de la lista de códigos guardados del usuario
+                        setupSavedCodesListener();
+
+                        // 3. Cargar la última propiedad actual (si existe)
+                        loadCurrentProperty();
+
+                    } else {
+                        authStatus.textContent = 'No autenticado (sesión anónima)';
+                    }
+                });
+
+                // Exportar funciones CRUD al ámbito global
+                window.addCodes = addCodes;
+                window.loadProperty = loadProperty;
+                window.deleteSavedCode = deleteSavedCode;
+
+            } catch (error) {
+                console.error("Error al inicializar Firebase o autenticar:", error);
+                authStatus.textContent = 'Error de Firebase. Consulte la consola.';
+            }
+        }
+
+        /**
+         * Inicializa los datos de prueba (MOCKS) en la colección pública (PROPERTIES_COLLECTION_PATH).
+         * Solo los inserta si el primer mock (PR001) no existe.
+         */
+        async function initializeMockProperties() {
+            try {
+                const propertiesRef = collection(db, PROPERTIES_COLLECTION_PATH);
+                const docRef = doc(propertiesRef, MOCK_PROPERTIES[0].code);
+                const docSnap = await getDoc(docRef);
+
+                if (docSnap.exists()) {
+                    console.log("Datos Mock ya existen. Omitiendo inserción.");
+                    return;
+                }
+
+                console.log("Insertando datos Mock de propiedades...");
+                for (const prop of MOCK_PROPERTIES) {
+                    // Usamos el código como ID del documento para facilitar la búsqueda
+                    await setDoc(doc(propertiesRef, prop.code), prop);
+                }
+                console.log("Datos Mock insertados con éxito.");
+
+            } catch (error) {
+                console.error("Error al inicializar datos Mock:", error);
+            }
+        }
+
+        /**
+         * Intenta cargar la propiedad marcada como 'current' por el usuario.
+         */
+        async function loadCurrentProperty() {
+            if (!isAuthReady || userId === 'loading') return;
+
+            try {
+                const userDocRef = doc(db, `/artifacts/${appId}/users/${userId}/currentStatus/config`);
+                const docSnap = await getDoc(userDocRef);
+
+                if (docSnap.exists() && docSnap.data().currentCode) {
+                    const code = docSnap.data().currentCode;
+                    loadProperty(code);
+                } else {
+                    // Cargar el mock por defecto si no hay nada marcado como actual
+                    loadProperty(MOCK_PROPERTIES[0].code);
+                }
+            } catch (error) {
+                console.warn("No se pudo cargar la propiedad actual del usuario:", error);
+                loadProperty(MOCK_PROPERTIES[0].code); // Fallback al PR001
+            }
+        }
+        
+        /**
+         * Guarda una lista de códigos de propiedad ingresados por el usuario.
+         */
+        async function addCodes() {
+            if (!isAuthReady) return;
+            const input = codeInput.value.trim();
+            if (!input) return;
+
+            // Divide la entrada por comas, filtra vacíos y convierte a mayúsculas
+            const newCodes = input.split(',')
+                                  .map(c => c.trim().toUpperCase())
+                                  .filter(c => c.length > 0);
+
+            if (newCodes.length === 0) return;
+
+            try {
+                const savedRef = collection(db, USER_SAVED_PROPERTIES_PATH);
+                let codesAdded = 0;
+
+                for (const code of newCodes) {
+                    // Usamos el código como ID del documento
+                    const docRef = doc(savedRef, code);
+                    await setDoc(docRef, { code: code, createdAt: new Date().toISOString() }, { merge: true });
+                    codesAdded++;
+                }
+
+                crudMessage.textContent = `Se agregaron ${codesAdded} códigos a tu lista.`;
+                crudMessage.classList.remove('text-red-400');
+                crudMessage.classList.add('text-green-400');
+                codeInput.value = '';
+
+            } catch (error) {
+                console.error("Error al agregar códigos:", error);
+                crudMessage.textContent = `Error al guardar: ${error.message}`;
+                crudMessage.classList.remove('text-green-400');
+                crudMessage.classList.add('text-red-400');
+            }
+        }
+
+        /**
+         * Elimina un código de la lista guardada del usuario.
+         * @param {string} code - El código de propiedad a eliminar.
+         */
+        async function deleteSavedCode(code) {
+            if (!isAuthReady) return;
+            try {
+                const docRef = doc(db, USER_SAVED_PROPERTIES_PATH, code);
+                await deleteDoc(docRef);
+                crudMessage.textContent = `Código ${code} eliminado.`;
+                crudMessage.classList.remove('text-red-400');
+                crudMessage.classList.add('text-green-400');
+            } catch (error) {
+                console.error(`Error al eliminar código ${code}:`, error);
+                crudMessage.textContent = `Error al eliminar ${code}: ${error.message}`;
+                crudMessage.classList.remove('text-green-400');
+                crudMessage.classList.add('text-red-400');
+            }
+        }
+
+        /**
+         * Marca un código como la propiedad actual del usuario (para la próxima carga).
+         * @param {string} code - El código de propiedad a establecer como actual.
+         */
+        async function setCurrentProperty(code) {
+            if (!isAuthReady) return;
+            try {
+                const docRef = doc(db, `/artifacts/${appId}/users/${userId}/currentStatus/config`);
+                await setDoc(docRef, { currentCode: code, updatedAt: new Date().toISOString() }, { merge: true });
+                loadProperty(code);
+                crudMessage.textContent = `Propiedad actual establecida en ${code}.`;
+                crudMessage.classList.remove('text-red-400');
+                crudMessage.classList.add('text-blue-400');
+            } catch (error) {
+                console.error(`Error al establecer propiedad actual ${code}:`, error);
+                crudMessage.textContent = `Error al establecer ${code}: ${error.message}`;
+                crudMessage.classList.remove('text-blue-400');
+                crudMessage.classList.add('text-red-400');
+            }
+        }
+        window.setCurrentProperty = setCurrentProperty; // Exportar para uso en el DOM
+
+
+        /**
+         * Renderiza la lista de códigos guardados del usuario.
+         * @param {Array<Object>} codes - Lista de documentos de códigos guardados.
+         */
+        function renderSavedCodes(codes) {
+            savedCodesList.innerHTML = ''; // Limpiar lista
+            if (codes.length === 0) {
+                savedCodesList.innerHTML = '<li class="text-center text-gray-400 p-2">No tienes códigos guardados. Añade uno.</li>';
+                return;
+            }
+
+            codes.forEach(savedCode => {
+                const listItem = document.createElement('li');
+                listItem.className = 'flex flex-wrap items-center justify-between p-3 bg-gray-800 rounded-lg shadow-inner';
+                listItem.innerHTML = `
+                    <span class="font-bold text-lg text-yellow-300 w-full sm:w-1/3 mb-2 sm:mb-0">${savedCode.code}</span>
+                    <div class="flex flex-wrap gap-2 w-full sm:w-2/3 justify-end">
+                        <button onclick="loadProperty('${savedCode.code}')" class="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded transition duration-150">
+                            Cargar VR
+                        </button>
+                        <button onclick="setCurrentProperty('${savedCode.code}')" class="text-xs bg-indigo-500 hover:bg-indigo-600 text-white px-3 py-1 rounded transition duration-150">
+                            Establecer Actual
+                        </button>
+                        <button onclick="deleteSavedCode('${savedCode.code}')" class="text-xs bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded transition duration-150">
+                            Eliminar
+                        </button>
+                    </div>
+                `;
+                savedCodesList.appendChild(listItem);
+            });
+        }
+
+
+        /**
+         * Configura el listener de Firestore para la lista de códigos del usuario.
+         */
+        function setupSavedCodesListener() {
+            if (!isAuthReady || userId === 'loading') return;
+
+            const savedRef = collection(db, USER_SAVED_PROPERTIES_PATH);
+            
+            onSnapshot(savedRef, (snapshot) => {
+                const savedCodes = snapshot.docs.map(doc => doc.data());
+                renderSavedCodes(savedCodes.sort((a, b) => a.code.localeCompare(b.code)));
+            }, (error) => {
+                console.error("Error al escuchar los códigos guardados:", error);
+                savedCodesList.innerHTML = '<li class="text-center text-red-400 p-2">Error al cargar la lista.</li>';
+            });
+        }
+
+
+        /**
+         * Carga la propiedad en la escena VR basándose en el código.
+         * @param {string} code - Código de la propiedad a cargar.
+         */
+        async function loadProperty(code) {
+            if (!db) return; 
+
+            code = code.trim().toUpperCase();
+            if (!code) return;
+
+            propertyTitle.textContent = `Cargando ${code}...`;
+            propertyDescription.textContent = '';
+            propertyTitle.classList.remove('text-red-400', 'text-green-400', 'text-blue-400');
+            propertyTitle.classList.add('text-yellow-400');
+
+            try {
+                // 1. Consulta a Firestore por el código de la propiedad en la colección pública de PROPERTIES
+                const propertiesRef = collection(db, PROPERTIES_COLLECTION_PATH);
+                const docRef = doc(propertiesRef, code);
+                const docSnap = await getDoc(docRef);
+
+                if (!docSnap.exists()) {
+                    throw new Error(`Propiedad no encontrada con el código: ${code}. Verifique en la colección pública.`);
+                }
+
+                const property = docSnap.data();
+                const { title, description, mediaType, mediaUrl } = property;
+
+                // 2. Limpiar escena actual
+                sky360.setAttribute('visible', false);
+                modelContainer.setAttribute('visible', false);
+                while (modelContainer.firstChild) {
+                    modelContainer.removeChild(modelContainer.firstChild);
+                }
+
+                // 3. Cargar el nuevo medio según el tipo
+                propertyTitle.textContent = `${title} (${code})`;
+                propertyDescription.textContent = description;
+                propertyTitle.classList.remove('text-yellow-400', 'text-red-400', 'text-blue-400');
+                propertyTitle.classList.add('text-green-400');
+
+                if (mediaType === 'image360' || mediaType === 'video360') {
+                    // Carga para FOTO o VIDEO 360 (usa <a-sky>)
+                    sky360.setAttribute('visible', true);
+
+                    if (mediaType === 'image360') {
+                        // Forzar el recargado del sky
+                        sky360.setAttribute('src', '');
+                        sky360.setAttribute('src', mediaUrl);
+                        sky360.removeAttribute('material', 'src', '#property-video');
+                        console.log(`Cargada imagen 360: ${mediaUrl}`);
+
+                    } else if (mediaType === 'video360') {
+                        // Creamos o actualizamos el elemento de video en los assets
+                        let videoAsset = document.getElementById('property-video');
+                        videoAsset.setAttribute('src', mediaUrl);
+
+                        // Es necesario esperar la carga del video
+                        videoAsset.load();
+                        await new Promise(resolve => videoAsset.onloadedmetadata = resolve);
+
+                        // Configuramos el sky para usar el video y lo reproducimos
+                        sky360.setAttribute('src', '#property-video');
+                        sky360.setAttribute('material', 'shader: flat; side: back;');
+                        videoAsset.play();
+                        console.log(`Cargado video 360: ${mediaUrl}`);
+                    }
+
+                } else if (mediaType === 'gltf3d') {
+                    // Carga para MODELO 3D (usa <a-gltf-model>)
+                    modelContainer.setAttribute('visible', true);
+
+                    const modelEntity = document.createElement('a-entity');
+                    modelEntity.setAttribute('gltf-model', mediaUrl);
+                    modelEntity.setAttribute('scale', '0.5 0.5 0.5');
+                    modelEntity.setAttribute('position', '0 0.5 -2');
+                    modelEntity.setAttribute('rotation', '0 0 0');
+                    modelContainer.appendChild(modelEntity);
+
+                    console.log(`Cargado modelo 3D GLTF: ${mediaUrl}`);
+
+                } else {
+                    throw new Error(`Tipo de medio desconocido: ${mediaType}`);
+                }
+
+            } catch (error) {
+                propertyTitle.textContent = 'ERROR al cargar';
+                propertyTitle.classList.remove('text-yellow-400', 'text-green-400', 'text-blue-400');
+                propertyTitle.classList.add('text-red-400');
+                propertyDescription.textContent = error.message;
+                console.error("Error al cargar la propiedad:", error);
+            }
+        }
+
+        // Inicia la aplicación al cargar la ventana
+        window.addEventListener('load', initializeFirebase);
+    </script>
+
+</body>
+</html>
