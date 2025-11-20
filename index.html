@@ -20,6 +20,20 @@
             background-color: rgba(0, 0, 0, 0.7);
             max-height: 100vh;
             overflow-y: auto;
+            transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+        }
+        /* Clase para ocultar el panel UI */
+        #ui-overlay.hidden {
+            transform: translateX(-100%);
+            opacity: 0;
+            pointer-events: none;
+        }
+        /* Botón de alternar siempre visible */
+        #toggle-button {
+            z-index: 11;
+            bottom: 1rem;
+            left: 1rem;
+            position: absolute;
         }
     </style>
 </head>
@@ -66,6 +80,21 @@
             </ul>
         </div>
     </div>
+    
+    <!-- Botón para alternar la visibilidad de la interfaz -->
+    <button id="toggle-button" onclick="toggleUI()"
+            class="bg-gray-800 hover:bg-gray-700 text-white p-3 rounded-full shadow-lg transition duration-200">
+        <!-- Icono de ojo abierto (predeterminado) -->
+        <svg id="eye-open" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+        </svg>
+        <!-- Icono de ojo cerrado (oculto por defecto) -->
+        <svg id="eye-closed" class="w-6 h-6 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7 1.274-4.057 5.064-7 9.542-7 1.763 0 3.497.411 5.035 1.157"></path>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.08 11.233A10.05 10.05 0 0122 12c-1.274 4.057-5.064 7-9.542 7-1.763 0-3.497-.411-5.035-1.157M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+        </svg>
+    </button>
 
     <!--
     ======================================================================
@@ -131,6 +160,9 @@
         const modelContainer = document.getElementById('model-container');
         const savedCodesList = document.getElementById('saved-codes-list');
         const crudMessage = document.getElementById('crud-message');
+        const uiOverlay = document.getElementById('ui-overlay');
+        const eyeOpenIcon = document.getElementById('eye-open');
+        const eyeClosedIcon = document.getElementById('eye-closed');
 
         // Rutas de las colecciones
         const PROPERTIES_COLLECTION_PATH = `/artifacts/${appId}/public/data/properties`;
@@ -200,15 +232,27 @@
                     }
                 });
 
-                // Exportar funciones CRUD al ámbito global
+                // Exportar funciones CRUD y UI al ámbito global
                 window.addCodes = addCodes;
                 window.loadProperty = loadProperty;
                 window.deleteSavedCode = deleteSavedCode;
+                window.toggleUI = toggleUI; // Exportar función de alternancia
 
             } catch (error) {
                 console.error("Error al inicializar Firebase o autenticar:", error);
                 authStatus.textContent = 'Error de Firebase. Consulte la consola.';
             }
+        }
+
+        /**
+         * Función para alternar la visibilidad de la interfaz de control.
+         */
+        function toggleUI() {
+            const isHidden = uiOverlay.classList.toggle('hidden');
+            
+            // Alternar los iconos del botón
+            eyeOpenIcon.classList.toggle('hidden', isHidden);
+            eyeClosedIcon.classList.toggle('hidden', !isHidden);
         }
 
         /**
