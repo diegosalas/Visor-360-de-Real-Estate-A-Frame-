@@ -580,13 +580,6 @@
                     }
                 });
 
-                // Exportar funciones CRUD y UI al ámbito global
-                window.addCodes = addCodes;
-                window.loadProperty = loadProperty;
-                window.deleteSavedCode = deleteSavedCode;
-                window.toggleUI = toggleUI; // Exportar función de alternancia
-                window.downloadPropertyMedia = downloadPropertyMedia; // Exportar la nueva función de descarga
-
             } catch (error) {
                 console.error("Error al inicializar Firebase o autenticar:", error);
                 authStatus.textContent = 'Error de Firebase. Consulte la consola.';
@@ -730,7 +723,6 @@
                 crudMessage.classList.add('text-red-400');
             }
         }
-        window.setCurrentProperty = setCurrentProperty; // Exportar para uso en el DOM
 
 
         /**
@@ -815,7 +807,8 @@
                 if (docSnap.exists()) {
                     property = docSnap.data();
                 } else {
-                    // CÓDIGO DE CORRECCIÓN: Si el código no se encuentra, usamos un objeto placeholder
+                    // CÓDIGO DE CORRECCIÓN APLICADO AQUÍ
+                    // Si el código no se encuentra, usamos un objeto placeholder
                     console.warn(`Código ${code} no encontrado en la colección pública. Usando placeholder.`);
                     property = {
                         code: code,
@@ -1013,7 +1006,6 @@
 
             console.log("Regresando a la escena VR de A-Frame.");
         }
-        window.deactivateExternalViewer = deactivateExternalViewer; // Exportar para uso en el DOM
 
         /**
          * Función para forzar la descarga del archivo 360/3D actualmente cargado.
@@ -1088,9 +1080,23 @@
                  }, 4000);
              }
         }
-        window.downloadPropertyMedia = downloadPropertyMedia; // Exportar al ámbito global
 
-
+        // =====================================================================
+        // EXPORTAR FUNCIONES AL ÁMBITO GLOBAL (Soluciona el ReferenceError)
+        // Esto hace que las funciones definidas en el módulo puedan ser llamadas
+        // directamente desde los atributos onclick="" del HTML.
+        // =====================================================================
+        window.addCodes = addCodes;
+        window.loadProperty = loadProperty;
+        window.deleteSavedCode = deleteSavedCode;
+        window.setCurrentProperty = setCurrentProperty;
+        window.deactivateExternalViewer = deactivateExternalViewer;
+        window.downloadPropertyMedia = downloadPropertyMedia;
+        window.toggleUI = toggleUI; 
+        
+        // =====================================================================
+        // INICIO DE LA APLICACIÓN
+        // =====================================================================
         document.addEventListener('DOMContentLoaded', () => {
             
             // --- Funciones de la Modal de URL ---
