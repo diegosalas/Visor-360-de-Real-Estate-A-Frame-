@@ -117,7 +117,10 @@
             <!-- El modelo 3D se añadirá aquí -->
         </a-entity>
 
-        <!-- 3. Cámara y Cursor -->
+        <!-- 3. Contenedor para Hotspots de Información -->
+        <a-entity id="hotspot-container"></a-entity>
+
+        <!-- 4. Cámara y Cursor -->
         <a-entity camera look-controls position="0 1.6 0">
             <!-- Cursor: Permite la interacción en VR (mirar para seleccionar) -->
             <a-entity cursor="fuse: true; fuseTimeout: 1000"
@@ -158,6 +161,7 @@
         const propertyDescription = document.getElementById('property-description');
         const sky360 = document.getElementById('sky360');
         const modelContainer = document.getElementById('model-container');
+        const hotspotContainer = document.getElementById('hotspot-container'); // Nuevo: Contenedor de Hotspots
         const savedCodesList = document.getElementById('saved-codes-list');
         const crudMessage = document.getElementById('crud-message');
         const uiOverlay = document.getElementById('ui-overlay');
@@ -169,13 +173,32 @@
         let USER_SAVED_PROPERTIES_PATH = ''; // Se define tras la autenticación
 
         // --- MOCKS DE PROPIEDADES (Datos públicos que la app lee) ---
+        // A PR001 se le han añadido 'hotspots' de información
         const MOCK_PROPERTIES = [
             {
                 code: "PR001",
-                title: "Foto 360 - Sala Principal",
-                description: "Una vista panorámica de un lujoso apartamento moderno (PR001).",
+                title: "Foto 360 - Sala Principal (Interactiva)",
+                description: "Una vista panorámica de un lujoso apartamento moderno. ¡Busque los puntos verdes!",
                 mediaType: "image360",
-                mediaUrl: "https://placehold.co/4096x2048/FF5733/FFFFFF/png?text=IMAGEN+360+SALA"
+                mediaUrl: "https://placehold.co/4096x2048/FF5733/FFFFFF/png?text=IMAGEN+360+SALA",
+                // Datos de Hotspots con Información Flotante
+                hotspots: [
+                    {
+                        id: "info-hspot-1",
+                        position: "3 1.5 -5", // Posición en el espacio 3D (x y z)
+                        infoText: "Sofa de diseño italiano.\n100% piel genuina."
+                    },
+                    {
+                        id: "info-hspot-2",
+                        position: "-5 1 0",
+                        infoText: "Ventanal de piso a techo.\nFiltro UV/IR incorporado."
+                    },
+                    {
+                        id: "info-hspot-3",
+                        position: "0 2.5 4",
+                        infoText: "Lámpara colgante exclusiva.\nMaterial: Latón pulido."
+                    }
+                ]
             },
             {
                 code: "PR002",
@@ -190,8 +213,104 @@
                 description: "Modelo 3D GLTF del plano arquitectónico (PR003).",
                 mediaType: "gltf3d",
                 mediaUrl: "https://cdn.glitch.com/2b39504a-4e2b-42be-8998-386d38e6e58f%2FDuck.glb?v=1560613291079"
+            },
+            {
+                code: "PR004",
+                title: "Foto 360 - Cocina",
+                description: "Una cocina moderna y funcional.",
+                mediaType: "image360",
+                mediaUrl: "https://placehold.co/4096x2048/3498DB/FFFFFF/png?text=IMAGEN+360+COCINA",
+            },
+            {
+                code: "PR005",
+                title: "Foto 360 - Dormitorio Principal",
+                description: "El amplio dormitorio con vestidor y baño privado.",
+                mediaType: "image360",
+                mediaUrl: "https://placehold.co/4096x2048/9B59B6/FFFFFF/png?text=IMAGEN+360+DORMITORIO",
             }
         ];
+
+        // =====================================================================
+        // AFRAME CUSTOM COMPONENTS
+        // =====================================================================
+
+        /**
+         * Componente 'hotspot-info'
+         * Crea y maneja la interacción (mostrar/ocultar) de un Infobox 3D asociado.
+         * La propiedad Infobox siempre mira a la cámara para ser legible.
+         */
+        AFRAME.registerComponent('hotspot-info', {
+            schema: {
+                infoText: {type: 'string', default: 'Información Detallada'},
+                infoPosition: {type: 'string', default: '0 0.5 0'}, // Posición relativa del infobox
+            },
+
+            init: function () {
+                const el = this.el;
+                const data = this.data;
+
+                // 1. Crear el Infobox (Texto y Plano de fondo)
+                this.infobox = document.createElement('a-entity');
+                this.infobox.setAttribute('position', data.infoPosition);
+                this.infobox.setAttribute('scale', '0 0 0'); // Inicialmente oculto
+
+                // Geometría y material del fondo del Infobox
+                this.infobox.setAttribute('geometry', 'primitive: plane; width: 1.8; height: 0.6');
+                this.infobox.setAttribute('material', 'color: #333; opacity: 0.8; shader: flat');
+                
+                // Texto del Infobox. Reemplazamos \n por saltos de línea reales.
+                this.infobox.setAttribute('text', {
+                    value: data.infoText.replace(/\\n/g, '\n'), 
+                    align: 'center',
+                    wrapCount: 30,
+                    color: '#FFFFFF'
+                });
+                
+                el.appendChild(this.infobox);
+
+                // 2. Manejo de la Interacción (Hover / Gaze)
+                el.addEventListener('mouseenter', () => {
+                    el.setAttribute('material', 'color', '#FFC107'); // Hotspot color: amarillo al mirar
+                    this.infobox.setAttribute('animation__scale', {
+                        property: 'scale',
+                        to: '1 1 1',
+                        dur: 200,
+                        easing: 'easeOutElastic',
+                        startEvents: 'mouseenter'
+                    });
+                });
+
+                el.addEventListener('mouseleave', () => {
+                    el.setAttribute('material', 'color', '#4CAF50'); // Hotspot color: verde normal
+                    this.infobox.setAttribute('animation__scale', {
+                        property: 'scale',
+                        to: '0 0 0',
+                        dur: 150,
+                        easing: 'easeInQuad',
+                        startEvents: 'mouseleave'
+                    });
+                });
+            },
+
+            /**
+             * Asegura que el Infobox siempre mire a la cámara (función de 'look-at').
+             */
+            tick: function () {
+                if (this.infobox) {
+                    // Obtenemos la cámara
+                    const camera = document.querySelector('a-entity[camera]');
+                    if (camera) {
+                        // Clonamos la posición de la cámara y hacemos que el infobox mire hacia ella
+                        const cameraWorldPosition = camera.object3D.position.clone();
+                        this.infobox.object3D.lookAt(cameraWorldPosition);
+                    }
+                }
+            }
+        });
+
+        // =====================================================================
+        // FIREBASE & APP LOGIC
+        // =====================================================================
 
         /**
          * Inicializa Firebase, autentica al usuario y establece el listener de autenticación.
@@ -256,26 +375,29 @@
         }
 
         /**
-         * Inicializa los datos de prueba (MOCKS) en la colección pública (PROPERTIES_COLLECTION_PATH).
-         * Solo los inserta si el primer mock (PR001) no existe.
+         * Inicializa los datos de prueba (MOCKS) en la colección pública.
          */
         async function initializeMockProperties() {
             try {
                 const propertiesRef = collection(db, PROPERTIES_COLLECTION_PATH);
+                
+                // Solo comprobamos el primer mock para ver si ya se insertaron
                 const docRef = doc(propertiesRef, MOCK_PROPERTIES[0].code);
                 const docSnap = await getDoc(docRef);
 
                 if (docSnap.exists()) {
                     console.log("Datos Mock ya existen. Omitiendo inserción.");
-                    return;
+                    // No hacemos 'return' aquí para asegurar que todos los mocks existan, 
+                    // simplemente intentamos insertarlos todos con setDoc(merge: true)
                 }
 
-                console.log("Insertando datos Mock de propiedades...");
+                console.log("Insertando o actualizando datos Mock de propiedades...");
+                // Usamos setDoc con { merge: true } para crear/actualizar todos los mocks, 
+                // incluyendo los nuevos (PR004, PR005) sin borrar los datos existentes.
                 for (const prop of MOCK_PROPERTIES) {
-                    // Usamos el código como ID del documento para facilitar la búsqueda
-                    await setDoc(doc(propertiesRef, prop.code), prop);
+                    await setDoc(doc(propertiesRef, prop.code), prop, { merge: true });
                 }
-                console.log("Datos Mock insertados con éxito.");
+                console.log("Datos Mock insertados/actualizados con éxito.");
 
             } catch (error) {
                 console.error("Error al inicializar datos Mock:", error);
@@ -472,6 +594,11 @@
                 while (modelContainer.firstChild) {
                     modelContainer.removeChild(modelContainer.firstChild);
                 }
+                // Limpiar hotspots
+                while (hotspotContainer.firstChild) {
+                    hotspotContainer.removeChild(hotspotContainer.firstChild);
+                }
+
 
                 // 3. Cargar el nuevo medio según el tipo
                 propertyTitle.textContent = `${title} (${code})`;
@@ -505,6 +632,26 @@
                         videoAsset.play();
                         console.log(`Cargado video 360: ${mediaUrl}`);
                     }
+                    
+                    // 4. Cargar Hotspots de Información (solo para media 360)
+                    if (property.hotspots && property.hotspots.length > 0) {
+                        property.hotspots.forEach(hspot => {
+                            // Hotspot (Sphere)
+                            const hotspotEl = document.createElement('a-sphere');
+                            hotspotEl.setAttribute('id', hspot.id);
+                            hotspotEl.setAttribute('radius', '0.15'); // Tamaño ajustado
+                            hotspotEl.setAttribute('position', hspot.position);
+                            hotspotEl.setAttribute('material', 'color: #4CAF50; opacity: 0.8; shader: flat');
+                            hotspotEl.setAttribute('hotspot-info', 
+                                `infoText: ${hspot.infoText.replace(/\n/g, '\\n')}`
+                            );
+                            hotspotEl.setAttribute('scale', '1 1 1');
+
+                            hotspotContainer.appendChild(hotspotEl);
+                        });
+                        console.log(`Cargados ${property.hotspots.length} hotspots interactivos.`);
+                    }
+
 
                 } else if (mediaType === 'gltf3d') {
                     // Carga para MODELO 3D (usa <a-gltf-model>)
